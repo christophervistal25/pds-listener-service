@@ -9,6 +9,7 @@ import (
 	database "pds-listener-service/database"
 	"pds-listener-service/types"
 	utilities "pds-listener-service/utilities"
+	"strings"
 	"sync"
 	"time"
 
@@ -22,6 +23,7 @@ var password = "christopher"
 var databaseName = "PDS"
 var err error
 var db *sql.DB
+var databaseSqlite *sql.DB
 
 func getFolderSize(path string) (int64, error) {
     var size int64
@@ -37,7 +39,6 @@ func getFolderSize(path string) (int64, error) {
     return size, err
 }
 
-// Struct to hold the state of the folder size monitoring
 type FolderMonitor struct {
     path       string
     size       int64
@@ -46,7 +47,6 @@ type FolderMonitor struct {
     quit       chan struct{}
 }
 
-// Function to start monitoring folder size changes
 func (fm *FolderMonitor) Start() error {
     var err error
     fm.watcher, err = fsnotify.NewWatcher()
@@ -79,7 +79,7 @@ func (fm *FolderMonitor) Start() error {
     return nil
 }
 
-// Function to watch for file system events
+
 func (fm *FolderMonitor) watchEvents() {
     for {
         select {
@@ -87,13 +87,14 @@ func (fm *FolderMonitor) watchEvents() {
             if !ok {
                 return
             }
+            
             if event.Op&fsnotify.Write == fsnotify.Write || event.Op&fsnotify.Create == fsnotify.Create || event.Op&fsnotify.Remove == fsnotify.Remove {
-                fm.updateSize()
+                fm.updateSize(event.Name)
             }
 
-            if event.Op&fsnotify.Write == fsnotify.Write && filepath.Ext(event.Name) == ".db" {
+            if event.Op&fsnotify.Create == fsnotify.Create && filepath.Ext(event.Name) == ".db" {
                 
-                databaseSqlite, err := database.ConnectSQLite(filepath.Base(event.Name))
+                databaseSqlite, err = database.ConnectSQLite(filepath.Base(event.Name))
                 if(err != nil){
                     log.Fatal(err)
                 }
@@ -364,7 +365,6 @@ func (fm *FolderMonitor) watchEvents() {
                 INNER JOIN users u ON eq.user_id = u.id
                 WHERE u.username = @p1
             `
-
 
             queryReferences := `
                 SELECT 
@@ -845,7 +845,7 @@ func (fm *FolderMonitor) periodicSizeCheck() {
     for {
         select {
         case <-ticker.C:
-            fm.updateSize()
+            fm.updateSize("")
         case <-fm.quit:
             ticker.Stop()
             return
@@ -854,7 +854,30 @@ func (fm *FolderMonitor) periodicSizeCheck() {
 }
 
 // Function to update the folder size
-func (fm *FolderMonitor) updateSize() {
+func (fm *FolderMonitor) updateSize(name string) {
+    if name != "" {
+        file := strings.SplitAfter(filepath.Base(name), ".")
+        removeDotInFileName := strings.TrimSuffix(file[0], ".")
+        passkey, err := utilities.Decrypt(removeDotInFileName)
+        if err == nil {
+            databaseSqlite, err = database.ConnectSQLite(filepath.Base(name))
+            
+            if err == nil {
+                database.UpdatePersonalInformation(db, databaseSqlite, passkey)
+            }
+
+            databaseSqlite, err = database.ConnectSQLite(removeDotInFileName + ".db")
+            if err == nil {
+                database.UpdateFamilyBackground(db, databaseSqlite, passkey)
+            }
+
+            databaseSqlite, err = database.ConnectSQLite(removeDotInFileName + ".db")
+            if err == nil {
+                database.UpdateSpouseChildren(db, databaseSqlite, passkey)
+            }
+
+        }
+    }
     size, err := getFolderSize(fm.path)
     if err != nil {
         log.Println("error getting folder size:", err)

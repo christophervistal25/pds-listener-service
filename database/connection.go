@@ -69,8 +69,7 @@ func CreateUser(db *sql.DB, eu types.EmployeeUser) error {
 	return nil
 }
 
-
-func CreateFamilyInfo(db *sql.DB, fi types.FamilyInfo) error {
+func CreateFamilyInfo(db *sql.DB, fi types.FamilyInfo) error {	
 	query := `INSERT INTO employee_family_backgrounds (employee_id,
 		spouse_firstname,
 		spouse_lastname,
@@ -239,7 +238,6 @@ func CreateWorkExperience(db *sql.DB, we types.EmployeeWorkExperience) error {
 	fmt.Println("Created work experience")
 	return nil
 }
-
 
 func CreateVoluntaryWork(db *sql.DB, vw types.VoluntaryWork) error {
 	query := `INSERT INTO employee_voluntary_works (
